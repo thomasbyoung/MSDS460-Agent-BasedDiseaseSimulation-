@@ -1,12 +1,13 @@
+# Add this to the beginning of your simulation.py file
+# or create a new file with these modifications
+
 import numpy as np
 import matplotlib.pyplot as plt
-import imageio.v2 as imageio
 from scipy.spatial import distance_matrix
-import os
-import argparse
 
 class Agent:
-    def __init__(self, x, y, infected, resistance, immunity=False, immunityCounter=0, infectedCounter=0, vaccinated=False):
+    def __init__(self, agent_id, x, y, infected, resistance, immunity=False, immunityCounter=0, infectedCounter=0, vaccinated=False):
+        self.id = agent_id  # Add unique ID
         self.x = x
         self.y = y
         self.infected = infected
@@ -15,6 +16,19 @@ class Agent:
         self.immunityCounter = immunityCounter
         self.infectedCounter = infectedCounter
         self.vaccinated = vaccinated
+        # Track state history for this agent
+        self.state_history = []
+        self.record_state()
+
+    def record_state(self):
+        """Record the current state of the agent for history tracking"""
+        if self.infected:
+            state = 'infected'
+        elif self.immunity:
+            state = 'immune'
+        else:
+            state = 'healthy'
+        self.state_history.append(state)
 
     def movement(self, stepSize, xBounds, yBounds):
         self.x += stepSize * np.random.uniform(-1, 1)
@@ -22,6 +36,8 @@ class Agent:
         
         self.x = np.clip(self.x, xBounds[0], xBounds[1])
         self.y = np.clip(self.y, yBounds[0], yBounds[1])
+        
+        previous_state = 'infected' if self.infected else 'immune' if self.immunity else 'healthy'
         
         if self.infected:
             self.infectedCounter -= 1
@@ -34,6 +50,11 @@ class Agent:
             self.immunityCounter -= 1
             if self.immunityCounter <= 0:
                 self.immunity = False
+        
+        # Check if state changed and record if it did
+        current_state = 'infected' if self.infected else 'immune' if self.immunity else 'healthy'
+        if current_state != previous_state:
+            self.record_state()
     
     def infect(self):
         if not self.infected and not self.immunity and not self.vaccinated:
@@ -42,101 +63,82 @@ class Agent:
                 self.infected = True
                 self.infectedCounter = 50
                 self.resistance *= 1.5
+                # Record state change when infected
+                self.record_state()
 
     def vaccinate(self):
         if not self.infected:
             self.immunity = True
             self.vaccinated = True
             self.immunityCounter = 100  # Longer immunity for vaccinated agents
+            # Record state change when vaccinated
+            self.record_state()
 
-def vaccinate_agents(agents, vaccination_rate=0.2):
-    num_to_vaccinate = int(len(agents) * vaccination_rate)
-    selected_agents = np.random.choice(agents, num_to_vaccinate, replace=False)
-    for agent in selected_agents:
-        agent.vaccinate()
-
-def getPosition(agents):
-    positions = []
-    for agent in agents:
-        positions.append([agent.x, agent.y])
-    return np.array(positions)
-
-def moveAgents(agents, stepSize, xBounds, yBounds):
-    for agent in agents:
-        agent.movement(stepSize, xBounds, yBounds)
-    return agents
-
-def getInfected(agents):
-    infected = []
-    for agent in agents:
-        infected.append(agent.infected)
-    return infected
-
-def getCloseAgents(distanceMatrix, agentNumber, proximity_threshold=10):
-    sort = np.argsort(distanceMatrix[agentNumber])
-    closeMask = distanceMatrix[agentNumber][sort] < proximity_threshold
-    closeAgents = np.argsort(distanceMatrix[agentNumber])[closeMask][1:]
-    return closeAgents
-
-def rollInfect(agents, proximity_threshold=10):
-    positions = getPosition(agents)
-    distanceMatrix = distance_matrix(positions, positions)
-    for i in range(len(agents)):
-        closeAgents = getCloseAgents(distanceMatrix, i, proximity_threshold)
-        for j in closeAgents:
-            if agents[j].infected and not agents[i].immunity:
-                agents[i].infect()
-    return agents
-
-def trackCounts(agents):
-    infected = sum(1 for agent in agents if agent.infected)
-    immune = sum(1 for agent in agents if agent.immunity)
-    healthy = sum(1 for agent in agents if not agent.infected and not agent.immunity)
-    return infected, immune, healthy
-
-def makeGif(frames, name, duration=100):
-    os.makedirs("frames", exist_ok=True)
-    images = []
-    for counter, frame in enumerate(frames):
-        plt.figure(figsize=(8, 8))
-        plt.scatter(frame[0], frame[1], c=frame[2], cmap="RdYlGn_r")
-        plt.title(f"Infected = {np.sum(frame[2])}")
-        plt.tick_params(left=False, right=False, labelleft=False, labelbottom=False, bottom=False)
-        frame_path = f"frames/{counter}.png"
-        plt.savefig(frame_path)
-        images.append(imageio.imread(frame_path))
-        plt.close()
-    imageio.mimsave(name, images, duration=duration)
-    print(f"Animation saved as {name}")
-    for file in os.listdir("frames"):
-        os.remove(os.path.join("frames", file))
-    os.rmdir("frames")
-
-def run_simulation(num_agents=500, num_initial_infected=10, resistance=0.3, 
+# Modified version of runSimulation to track agent states by timestep
+def run_simulation_with_tracking(num_agents=500, num_initial_infected=10, resistance=0.3, 
                   step_size=5, bounds=(0, 500), timesteps=500, 
-                  proximity=10, vaccination_rate=0.2, vaccination_step=100, 
-                  create_gif=True, plot_stats=True):
-    agents = [Agent(np.random.uniform(bounds[0], bounds[1]), np.random.uniform(bounds[0], bounds[1]), False, resistance) for _ in range(num_agents)]
+                  proximity=10, vaccination_rate=0.2, vaccination_step=100):
+    
+    # Initialize agents with IDs
+    agents = []
+    for i in range(num_agents):
+        x = np.random.uniform(bounds[0], bounds[1])
+        y = np.random.uniform(bounds[0], bounds[1])
+        # Add 1 to i for more human-friendly IDs starting from 1
+        agents.append(Agent(i+1, x, y, False, resistance))
+    
+    # Set initial infected agents
     for i in range(min(num_initial_infected, num_agents)):
         agents[i].infected = True
         agents[i].infectedCounter = 50
-    vaccinate_agents(agents, vaccination_rate)
+        agents[i].record_state()  # Record initial infected state
+    
+    # Vaccinate agents if specified
+    if vaccination_rate > 0:
+        num_to_vaccinate = int(len(agents) * vaccination_rate)
+        for i in range(num_initial_infected, num_initial_infected + num_to_vaccinate):
+            if i < len(agents):
+                agents[i].vaccinate()
+    
     frames = []
     statistics = []
+    agent_states_by_timestep = []
+    
+    # Run simulation steps
     for i in range(timesteps):
-        if i == vaccination_step:
-            vaccinate_agents(agents, vaccination_rate)
+        # Capture state of all agents at this timestep
+        timestep_states = {agent.id: 'infected' if agent.infected else 'immune' if agent.immunity else 'healthy' 
+                          for agent in agents}
+        agent_states_by_timestep.append(timestep_states)
+        
+        # Vaccinate at specified step if needed
+        if i == vaccination_step and vaccination_rate > 0:
+            num_to_vaccinate = int(len(agents) * vaccination_rate)
+            healthy_agents = [a for a in agents if not a.infected and not a.immunity]
+            for agent in healthy_agents[:num_to_vaccinate]:
+                agent.vaccinate()
+        
+        # Move and possibly infect agents
         agents = moveAgents(agents, step_size, bounds, bounds)
         agents = rollInfect(agents, proximity)
+        
+        # Record data for visualization
         positions = getPosition(agents)
         infected = getInfected(agents)
-        if create_gif:
-            frames.append([positions[:, 0], positions[:, 1], infected])
-        if plot_stats:
-            infected_count, immune_count, healthy_count = trackCounts(agents)
-            statistics.append((infected_count, immune_count, healthy_count))
-    if create_gif:
-        makeGif(frames, "disease_simulation.gif")
-    if plot_stats:
-        plot_statistics(statistics, "disease_stats.png")
-    return agents, statistics
+        
+        frames.append({
+            'positions': positions,
+            'infected': infected,
+            'immunity': [agent.immunity for agent in agents],
+            'agent_ids': [agent.id for agent in agents]
+        })
+        
+        infected_count, immune_count, healthy_count = trackCounts(agents)
+        statistics.append((infected_count, immune_count, healthy_count))
+    
+    # Format agent data for the table visualization
+    agent_timelines = {}
+    for agent in agents:
+        agent_timelines[agent.id] = agent.state_history
+    
+    return frames, statistics, agent_timelines
