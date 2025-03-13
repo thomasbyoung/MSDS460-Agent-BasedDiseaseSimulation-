@@ -3,13 +3,12 @@ from dash import dcc, html, Input, Output, State
 import plotly.graph_objs as go
 import numpy as np
 
-# Import your simulation functions
 from simulation import Agent, moveAgents, rollInfect, trackCounts, getPosition, getInfected
 
-# Initialize the Dash app
+
 app = dash.Dash(__name__)
 
-# Define the app layout
+
 app.layout = html.Div([
     html.H1("MSDS 460 Final Project: Agent-Based Disease Simulation Dashboard"),
     
@@ -83,7 +82,7 @@ app.layout = html.Div([
                         ], style={'textAlign': 'center', 'marginTop': '10px'}),
                         dcc.Interval(
                             id='animation-interval',
-                            interval=200,  # milliseconds between frames
+                            interval=200, 
                             n_intervals=0,
                             disabled=True
                         )
@@ -94,7 +93,6 @@ app.layout = html.Div([
     ])
 ])
 
-# Store simulation frames in a global variable
 simulation_data = {
     'frames': [],
     'statistics': [],
@@ -102,7 +100,6 @@ simulation_data = {
     'playing': False
 }
 
-# Define callback to run simulation and update graphs
 @app.callback(
     [Output('current-state-graph', 'figure'),
      Output('disease-progression-graph', 'figure'),
@@ -129,18 +126,16 @@ def update_simulation(run_clicks, prev_clicks, next_clicks, play_clicks,
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else 'no-trigger'
     
     if run_clicks == 0 and trigger_id == 'run-button':
-        # Return empty figures for initial load
+
         empty_fig = go.Figure()
         empty_fig.update_layout(title="Run simulation to see results")
         return empty_fig, empty_fig, empty_fig, "No simulation data", True
     
-    # Run new simulation if run button clicked
+
     if trigger_id == 'run-button':
-        # Reset current frame and playing state
         simulation_data['current_frame'] = 0
         simulation_data['playing'] = False
         
-        # Initialize agents
         agents = []
         bounds = (0, 500)
         for i in range(num_agents):
@@ -155,7 +150,7 @@ def update_simulation(run_clicks, prev_clicks, next_clicks, play_clicks,
         frames = []
         statistics = []
         
-        # Run simulation
+
         for i in range(timesteps):
             agents = moveAgents(agents, step_size, bounds, bounds)
             agents = rollInfect(agents, proximity)
@@ -165,50 +160,42 @@ def update_simulation(run_clicks, prev_clicks, next_clicks, play_clicks,
             frames.append((positions, infected, [agent.immunity for agent in agents]))
             infected_count, immune_count, healthy_count = trackCounts(agents)
             statistics.append((infected_count, immune_count, healthy_count))
-        
-        # Store simulation results
+
         simulation_data['frames'] = frames
         simulation_data['statistics'] = statistics
     
-    # Toggle play/pause
+
     elif trigger_id == 'play-button' and simulation_data['frames']:
         simulation_data['playing'] = not simulation_data['playing']
-    
-    # Update current frame based on button clicks or interval
     elif trigger_id == 'next-button' and simulation_data['frames']:
         simulation_data['current_frame'] = min(simulation_data['current_frame'] + 1, len(simulation_data['frames']) - 1)
     elif trigger_id == 'prev-button' and simulation_data['frames']:
         simulation_data['current_frame'] = max(simulation_data['current_frame'] - 1, 0)
     elif trigger_id == 'animation-interval' and simulation_data['frames'] and simulation_data['playing']:
-        # Loop back to the beginning if we reach the end
+
         if simulation_data['current_frame'] >= len(simulation_data['frames']) - 1:
             simulation_data['current_frame'] = 0
         else:
             simulation_data['current_frame'] += 1
     
-    # Return empty figures if no data
     if not simulation_data['frames']:
         empty_fig = go.Figure()
         empty_fig.update_layout(title="Run simulation to see results")
         return empty_fig, empty_fig, empty_fig, "No simulation data", True
     
-    # Create current state figure (last frame)
+
     last_frame = simulation_data['frames'][-1]
     current_fig = create_state_figure(last_frame, "Current State (Last Timestep)")
     
-    # Create disease progression figure
+
     progression_fig = create_progression_figure(simulation_data['statistics'], timesteps)
-    
-    # Create animation frame figure
+
     current_frame_idx = simulation_data['current_frame']
     animation_fig = create_state_figure(
         simulation_data['frames'][current_frame_idx], 
         f"Timestep: {current_frame_idx + 1}"
     )
-    
     frame_indicator = f"Frame {current_frame_idx + 1} of {len(simulation_data['frames'])}"
-    
-    # Update the interval disabled state based on playing state
     interval_disabled = not simulation_data['playing']
     
     return current_fig, progression_fig, animation_fig, frame_indicator, interval_disabled
@@ -216,13 +203,11 @@ def update_simulation(run_clicks, prev_clicks, next_clicks, play_clicks,
 def create_state_figure(frame_data, title):
     positions, infected, immunity = frame_data
     fig = go.Figure()
-    
-    # Convert to numpy arrays for easier manipulation
+
     positions_np = np.array(positions)
     infected_np = np.array(infected)
     immunity_np = np.array(immunity)
-    
-    # Extract positions for different agent types
+
     infected_pos = positions_np[infected_np]
     immune_pos = positions_np[immunity_np]
     healthy_pos = positions_np[~infected_np & ~immunity_np]
