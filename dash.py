@@ -167,8 +167,8 @@ def run_and_display_simulation(n_clicks, num_agents, num_initial_infected,
     
     current_fig.update_layout(
         title="Current State (Last Timestep)",
-        xaxis=dict(range=[0, 500]), 
-        yaxis=dict(range=[0, 500]),
+        xaxis=dict(range=[0, 500], showticklabels=False), 
+        yaxis=dict(range=[0, 500], showticklabels=False),
         height=500
     )
     
@@ -199,12 +199,51 @@ def run_and_display_simulation(n_clicks, num_agents, num_initial_infected,
         height=500
     )
     
-    # Create animation (this is simplified - you may need to adapt your makeGif function)
-    # For simplicity, we'll just use the last frame as a static image
-    # In a full implementation, you'd generate the GIF and encode it for display
+    images = []
+    for timestep, frame in enumerate(frames):
+        fig = go.Figure()
+        positions = np.column_stack((frame[0], frame[1]))  # Stack positions in x, y
+        infected = np.array(frame[2])  # Convert infected to a NumPy array
+
+        # Scatter plot for infected agents
+        fig.add_trace(go.Scatter(
+            x=positions[infected, 0], y=positions[infected, 1],
+            mode='markers', marker=dict(color='red', size=8)
+        ))
+
+        # Scatter plot for healthy agents (not infected)
+        fig.add_trace(go.Scatter(
+            x=positions[~infected, 0], y=positions[~infected, 1],
+            mode='markers', marker=dict(color='green', size=8)
+        ))
+
+        fig.update_layout(
+            title=f"Timestep: {timestep + 1}",
+            xaxis=dict(range=[0, 500], showticklabels=False),
+            yaxis=dict(range=[0, 500], showticklabels=False),
+            showlegend=False,
+            height=500
+        )
+
+        # Convert figure to image
+        img_bytes = fig.to_image(format="png")
+        img = Image.open(io.BytesIO(img_bytes))
+        images.append(img)
+
+
     
-    animation_src = ""  # Placeholder for where you'd put the actual GIF encoding
+    # Create a temporary file to save the GIF
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.gif') as temp_file:
+        gif_path = temp_file.name
+        images[0].save(gif_path, save_all=True, append_images=images[1:], loop=0, duration=200)
     
+    # Encode the GIF as a base64 string
+    with open(gif_path, "rb") as gif_file:
+        gif_b64 = base64.b64encode(gif_file.read()).decode('utf-8')
+    
+    # Construct the gif source for display
+    animation_src = f"data:image/gif;base64,{gif_b64}"
+
     return current_fig, progression_fig, animation_src
 
 if __name__ == '__main__':
